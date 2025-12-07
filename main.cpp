@@ -7,7 +7,8 @@
 #include <QPainter>
 #include <vector>
 #include <queue>
-#include <random>
+#include <cstdlib>
+#include <ctime>
 
 using namespace std;
 
@@ -21,13 +22,13 @@ using namespace std;
 class Maze {
 public:
     int width, height;
-    int sx, sy;        // Start at corner
-    int ex, ey;        // End at opposite corner
+    int sx, sy;
+    int ex, ey;
     vector<vector<int>> grid;
 
     Maze(int w = 21, int h = 21) : width(w), height(h) {
-        sx = 0; sy = 0;                // TOP-LEFT START
-        ex = width - 1; ey = height - 1;  // BOTTOM-RIGHT END
+        sx = 0; sy = 0;                // Start top-left
+        ex = width - 1; ey = height - 1;  // End bottom-right
         grid.resize(height, vector<int>(width, WALL));
     }
 
@@ -35,110 +36,126 @@ public:
         return x >= 0 && y >= 0 && x < width && y < height;
     }
 
-    // -------------------- Maze Generation (Prim’s Algorithm) --------------------
+    void addWalls(int x, int y, vector<pair<int,int>> &walls) {
+        if (isInside(x+1, y)) walls.push_back(make_pair(x+1, y));
+        if (isInside(x-1, y)) walls.push_back(make_pair(x-1, y));
+        if (isInside(x, y+1)) walls.push_back(make_pair(x, y+1));
+        if (isInside(x, y-1)) walls.push_back(make_pair(x, y-1));
+    }
+
     void generatePrim() {
+        // Fill maze with walls
         grid.assign(height, vector<int>(width, WALL));
 
-        // Force corners to be open
-        grid[sy][sx] = PASSAGE;
-        grid[ey][ex] = PASSAGE;
-
-        // Prim's works best starting from (1,1)
+        // Start carving from (1,1)
         int px = 1, py = 1;
-        if (width > 2 && height > 2)
-            grid[py][px] = PASSAGE;
+        grid[py][px] = PASSAGE;
 
         vector<pair<int,int>> walls;
-        random_device rd;
-        mt19937 gen(rd());
+        addWalls(px, py, walls);
 
-        walls.push_back({px+1, py});
-        walls.push_back({px, py+1});
+        srand(time(NULL));
 
         while (!walls.empty()) {
-            uniform_int_distribution<> dis(0, walls.size() - 1);
-            int idx = dis(gen);
-            auto [wx, wy] = walls[idx];
+            int idx = rand() % walls.size();
+            int wx = walls[idx].first;
+            int wy = walls[idx].second;
             walls.erase(walls.begin() + idx);
 
             if (!isInside(wx, wy)) continue;
 
-            if (grid[wy][wx] == WALL) {
-                int passages = 0;
+            // Count neighboring passages
+            int count = 0;
+            if (isInside(wx+1, wy) && grid[wy][wx+1] == PASSAGE) count++;
+            if (isInside(wx-1, wy) && grid[wy][wx-1] == PASSAGE) count++;
+            if (isInside(wx, wy+1) && grid[wy+1][wx] == PASSAGE) count++;
+            if (isInside(wx, wy-1) && grid[wy-1][wx] == PASSAGE) count++;
 
-                if (isInside(wx+1, wy) && grid[wy][wx+1] == PASSAGE) passages++;
-                if (isInside(wx-1, wy) && grid[wy][wx-1] == PASSAGE) passages++;
-                if (isInside(wx, wy+1) && grid[wy+1][wx] == PASSAGE) passages++;
-                if (isInside(wx, wy-1) && grid[wy-1][wx] == PASSAGE) passages++;
-
-                if (passages == 1) {
-                    grid[wy][wx] = PASSAGE;
-
-                    walls.push_back({wx+1, wy});
-                    walls.push_back({wx-1, wy});
-                    walls.push_back({wx, wy+1});
-                    walls.push_back({wx, wy-1});
-                }
+            // Carve only if exactly 1 neighbor is passage
+            if (count == 1) {
+                grid[wy][wx] = PASSAGE;
+                addWalls(wx, wy, walls);
             }
         }
 
-        // Always ensure start corner connects
-        if (width > 1) grid[0][1] = PASSAGE;
-        if (height > 1) grid[1][0] = PASSAGE;
-
-        // Always ensure end corner connects
-        if (width > 1) grid[ey][ex-1] = PASSAGE;
-        if (height > 1) grid[ey-1][ex] = PASSAGE;
+        // Ensure start and end are open
+        grid[sy][sx] = PASSAGE;
+        if (isInside(sx+1, sy)) grid[sy][sx+1] = PASSAGE;
+        grid[ey][ex] = PASSAGE;
+        if (isInside(ex-1, ey)) grid[ey][ex-1] = PASSAGE;
     }
-
-    // -------------------- BFS Shortest Path --------------------
+    // -------------------- BFS Shortest Path (Simpler) --------------------
     bool findShortestPathBFS() {
-        queue<pair<int,int>> q;
-        vector<vector<bool>> visited(height, vector<bool>(width,false));
-        vector<vector<pair<int,int>>> parent(height, vector<pair<int,int>>(width, {-1,-1}));
+        // Queue stores x, y, and previous coordinates
+        struct Node {
+            int x, y, px, py;
+        };
 
-        q.push({sx, sy});
+        queue<Node> q;
+        q.push({sx, sy, -1, -1}); // start
+
+        // 2D visited array
+        vector<vector<bool>> visited(height, vector<bool>(width,false));
+
         visited[sy][sx] = true;
 
+        // Directions: right, left, down, up
         int dx[4] = {1,-1,0,0};
         int dy[4] = {0,0,1,-1};
 
-        while(!q.empty()) {
-            auto [x,y] = q.front(); q.pop();
-            if(x==ex && y==ey) break;
+        // To store the path back
+        vector<vector<pair<int,int>>> cameFrom(height, vector<pair<int,int>>(width, make_pair(-1,-1)));
 
-            for(int i=0;i<4;i++){
-                int nx=x+dx[i], ny=y+dy[i];
-                if(nx>=0 && ny>=0 && nx<width && ny<height &&
-                    !visited[ny][nx] && grid[ny][nx]==PASSAGE){
-                    visited[ny][nx]=true;
-                    if(!(nx==sx && ny==sy) && !(nx==ex && ny==ey))
-                        grid[ny][nx]=VISITED;
-                    parent[ny][nx] = {x,y};
-                    q.push({nx,ny});
+        while (!q.empty()) {
+            Node current = q.front(); q.pop();
+
+            if (current.x == ex && current.y == ey) break;
+
+            for (int i=0; i<4; i++) {
+                int nx = current.x + dx[i];
+                int ny = current.y + dy[i];
+
+                if (nx>=0 && ny>=0 && nx<width && ny<height &&
+                    !visited[ny][nx] && grid[ny][nx] == PASSAGE) {
+                    visited[ny][nx] = true;
+
+                    // Mark as visited for coloring
+                    if (!(nx==sx && ny==sy) && !(nx==ex && ny==ey))
+                        grid[ny][nx] = VISITED;
+
+                    // Store previous cell for path backtracking
+                    cameFrom[ny][nx] = make_pair(current.x, current.y);
+
+                    q.push({nx, ny, current.x, current.y});
                 }
             }
         }
 
-        if(!visited[ey][ex]) return false;
+        // If end not reached
+        if (!visited[ey][ex]) return false;
 
+        // Backtrack path
         int cx = ex, cy = ey;
-        while(!(cx==sx && cy==sy)){
-            if(!(cx==sx && cy==sy) && !(cx==ex && cy==ey))
+        while (!(cx == sx && cy == sy)) {
+            if (!(cx==sx && cy==sy) && !(cx==ex && cy==ey))
                 grid[cy][cx] = PATH;
-            auto [px, py] = parent[cy][cx];
-            cx = px; cy = py;
+
+            int px = cameFrom[cy][cx].first;
+            int py = cameFrom[cy][cx].second;
+            cx = px;
+            cy = py;
         }
 
         return true;
     }
+
 };
 
-// -------------------- Maze Drawing Widget --------------------
+// -------------------- Maze Widget --------------------
 class MazeWidget : public QWidget {
     Q_OBJECT
 public:
-    MazeWidget(QWidget* parent = nullptr) : QWidget(parent), maze(nullptr) {}
+    MazeWidget(QWidget* parent=nullptr) : QWidget(parent), maze(nullptr) {}
     Maze* maze;
 
 protected:
@@ -148,18 +165,16 @@ protected:
         QPainter p(this);
         int cellSize = 20;
 
-        for(int y=0; y<maze->height; y++){
-            for(int x=0; x<maze->width; x++){
-                if(x==maze->sx && y==maze->sy)
-                    p.setBrush(Qt::magenta);
-                else if(x==maze->ex && y==maze->ey)
-                    p.setBrush(Qt::red);
+        for (int y=0; y<maze->height; y++) {
+            for (int x=0; x<maze->width; x++) {
+                if (x==maze->sx && y==maze->sy) p.setBrush(Qt::magenta);
+                else if (x==maze->ex && y==maze->ey) p.setBrush(Qt::red);
                 else {
-                    switch(maze->grid[y][x]){
-                    case WALL:     p.setBrush(QColor(0,102,204)); break;
-                    case PASSAGE:  p.setBrush(Qt::white); break;
-                    case VISITED:  p.setBrush(QColor(102,204,255)); break;
-                    case PATH:     p.setBrush(Qt::yellow); break;
+                    switch(maze->grid[y][x]) {
+                    case WALL: p.setBrush(QColor(0,102,204)); break;
+                    case PASSAGE: p.setBrush(Qt::white); break;
+                    case VISITED: p.setBrush(QColor(102,204,255)); break;
+                    case PATH: p.setBrush(Qt::yellow); break;
                     }
                 }
                 p.drawRect(x*cellSize, y*cellSize, cellSize, cellSize);
@@ -174,42 +189,36 @@ class Window : public QWidget {
 public:
     Window(QWidget *parent=nullptr) : QWidget(parent), maze(21,21) {
         stacked = new QStackedWidget(this);
-
         setupTitleScreen();
         setupLevelScreen();
         setupMazeScreen();
 
         QVBoxLayout *mainLayout = new QVBoxLayout(this);
         mainLayout->addWidget(stacked);
-
         setLayout(mainLayout);
+
         stacked->setCurrentWidget(titlePage);
         setWindowTitle("Maze Game");
         resize(460, 540);
     }
 
 private slots:
-    void goToLevelScreen(){ stacked->setCurrentWidget(levelPage); }
-    void startEasy(){ startMazeLevel(21); }
-    void startMedium(){ startMazeLevel(31); }
-    void startHard(){ startMazeLevel(41); }
-
-    void solveMaze(){
-        maze.findShortestPathBFS();
-        mazeWidget->update();
-        btnExit->setVisible(true);
-    }
+    void goToLevelScreen() { stacked->setCurrentWidget(levelPage); }
+    void startEasy() { startMazeLevel(21); }
+    void startMedium() { startMazeLevel(31); }
+    void startHard() { startMazeLevel(41); }
+    void solveMaze() { maze.findShortestPathBFS(); mazeWidget->update(); btnExit->setVisible(true); }
+    void backToHome() { stacked->setCurrentWidget(titlePage); }
 
 private:
     Maze maze;
     QStackedWidget *stacked;
     QWidget *titlePage, *levelPage, *mazePage;
     MazeWidget *mazeWidget;
-    QPushButton *btnSolve;
-    QPushButton *btnExit;
+    QPushButton *btnSolve, *btnExit;
 
     // -------------------- Title Screen --------------------
-    void setupTitleScreen(){
+    void setupTitleScreen() {
         titlePage = new QWidget();
         QVBoxLayout *layout = new QVBoxLayout();
 
@@ -238,7 +247,7 @@ private:
     }
 
     // -------------------- Level Screen --------------------
-    void setupLevelScreen(){
+    void setupLevelScreen() {
         levelPage = new QWidget();
         QVBoxLayout *layout = new QVBoxLayout();
 
@@ -271,7 +280,7 @@ private:
     }
 
     // -------------------- Maze Screen --------------------
-    void setupMazeScreen(){
+    void setupMazeScreen() {
         mazePage = new QWidget();
         QVBoxLayout *layout = new QVBoxLayout();
 
@@ -285,9 +294,6 @@ private:
         btnSolve->setStyleSheet("font-size: 18px; padding: 8px; background-color: purple; color: white;");
         btnExit->setStyleSheet("font-size: 18px; padding: 8px; background-color: red; color: white;");
 
-        btnSolve->setFixedWidth(350);
-        btnExit->setFixedWidth(350);
-
         layout->addWidget(mazeWidget, 0, Qt::AlignCenter);
         layout->addSpacing(15);
         layout->addWidget(btnSolve, 0, Qt::AlignCenter);
@@ -298,15 +304,10 @@ private:
         stacked->addWidget(mazePage);
 
         connect(btnSolve, &QPushButton::clicked, this, &Window::solveMaze);
-
-        // ⭐ FIX: Go back to Home instead of closing
-        connect(btnExit, &QPushButton::clicked, this, [this](){
-            stacked->setCurrentWidget(titlePage);
-        });
+        connect(btnExit, &QPushButton::clicked, this, &Window::backToHome);
     }
 
-    // -------------------- AUTO-RESIZE FOR MAZE --------------------
-    void startMazeLevel(int size){
+    void startMazeLevel(int size) {
         maze = Maze(size, size);
         maze.generatePrim();
         mazeWidget->maze = &maze;
@@ -334,7 +335,7 @@ private:
 };
 
 // -------------------- MAIN --------------------
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     Window w;
     w.show();
