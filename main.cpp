@@ -21,56 +21,78 @@ using namespace std;
 class Maze {
 public:
     int width, height;
-    int sx = 1, sy = 1;       // Start coordinates
-    int ex, ey;               // End coordinates
+    int sx, sy;        // Start at corner
+    int ex, ey;        // End at opposite corner
     vector<vector<int>> grid;
 
     Maze(int w = 21, int h = 21) : width(w), height(h) {
-        ex = width - 2;
-        ey = height - 2;
+        sx = 0; sy = 0;                // TOP-LEFT START
+        ex = width - 1; ey = height - 1;  // BOTTOM-RIGHT END
         grid.resize(height, vector<int>(width, WALL));
     }
 
+    bool isInside(int x, int y) {
+        return x >= 0 && y >= 0 && x < width && y < height;
+    }
+
+    // -------------------- Maze Generation (Prim’s Algorithm) --------------------
     void generatePrim() {
         grid.assign(height, vector<int>(width, WALL));
+
+        // Force corners to be open
+        grid[sy][sx] = PASSAGE;
+        grid[ey][ex] = PASSAGE;
+
+        // Prim's works best starting from (1,1)
+        int px = 1, py = 1;
+        if (width > 2 && height > 2)
+            grid[py][px] = PASSAGE;
+
         vector<pair<int,int>> walls;
         random_device rd;
         mt19937 gen(rd());
 
-        grid[sy][sx] = PASSAGE;
-        walls.push_back({sx+1, sy});
-        walls.push_back({sx, sy+1});
+        walls.push_back({px+1, py});
+        walls.push_back({px, py+1});
 
-        while(!walls.empty()) {
-            uniform_int_distribution<> dis(0, walls.size()-1);
+        while (!walls.empty()) {
+            uniform_int_distribution<> dis(0, walls.size() - 1);
             int idx = dis(gen);
             auto [wx, wy] = walls[idx];
             walls.erase(walls.begin() + idx);
 
-            if(!isInside(wx, wy)) continue;
+            if (!isInside(wx, wy)) continue;
 
-            if(grid[wy][wx] == WALL){
+            if (grid[wy][wx] == WALL) {
                 int passages = 0;
-                if(isInside(wx+1,wy) && grid[wy][wx+1]==PASSAGE) passages++;
-                if(isInside(wx-1,wy) && grid[wy][wx-1]==PASSAGE) passages++;
-                if(isInside(wx,wy+1) && grid[wy+1][wx]==PASSAGE) passages++;
-                if(isInside(wx,wy-1) && grid[wy-1][wx]==PASSAGE) passages++;
 
-                if(passages == 1){
+                if (isInside(wx+1, wy) && grid[wy][wx+1] == PASSAGE) passages++;
+                if (isInside(wx-1, wy) && grid[wy][wx-1] == PASSAGE) passages++;
+                if (isInside(wx, wy+1) && grid[wy+1][wx] == PASSAGE) passages++;
+                if (isInside(wx, wy-1) && grid[wy-1][wx] == PASSAGE) passages++;
+
+                if (passages == 1) {
                     grid[wy][wx] = PASSAGE;
-                    walls.push_back({wx+1,wy});
-                    walls.push_back({wx-1,wy});
-                    walls.push_back({wx,wy+1});
-                    walls.push_back({wx,wy-1});
+
+                    walls.push_back({wx+1, wy});
+                    walls.push_back({wx-1, wy});
+                    walls.push_back({wx, wy+1});
+                    walls.push_back({wx, wy-1});
                 }
             }
         }
+
+        // Always ensure start corner connects
+        if (width > 1) grid[0][1] = PASSAGE;
+        if (height > 1) grid[1][0] = PASSAGE;
+
+        // Always ensure end corner connects
+        if (width > 1) grid[ey][ex-1] = PASSAGE;
+        if (height > 1) grid[ey-1][ex] = PASSAGE;
     }
 
+    // -------------------- BFS Shortest Path --------------------
     bool findShortestPathBFS() {
-        grid[sy][sx] = PASSAGE;
-        grid[ey][ex] = PASSAGE;
-
         queue<pair<int,int>> q;
         vector<vector<bool>> visited(height, vector<bool>(width,false));
         vector<vector<pair<int,int>>> parent(height, vector<pair<int,int>>(width, {-1,-1}));
@@ -110,9 +132,6 @@ public:
 
         return true;
     }
-
-private:
-    bool isInside(int x,int y){ return x>=0 && y>=0 && x<width && y<height; }
 };
 
 // -------------------- Maze Drawing Widget --------------------
@@ -122,27 +141,24 @@ public:
     MazeWidget(QWidget* parent = nullptr) : QWidget(parent), maze(nullptr) {}
     Maze* maze;
 
-    QSize sizeHint() const override {
-        if (!maze) return QSize(400,400);
-        return QSize(maze->width * 20, maze->height * 20);
-    }
-
 protected:
     void paintEvent(QPaintEvent*) override {
         if (!maze) return;
+
         QPainter p(this);
         int cellSize = 20;
+
         for(int y=0; y<maze->height; y++){
             for(int x=0; x<maze->width; x++){
                 if(x==maze->sx && y==maze->sy)
-                    p.setBrush(Qt::magenta); // Start → Purple
+                    p.setBrush(Qt::magenta);
                 else if(x==maze->ex && y==maze->ey)
-                    p.setBrush(Qt::red);     // End → Red
-                else{
+                    p.setBrush(Qt::red);
+                else {
                     switch(maze->grid[y][x]){
-                    case WALL:     p.setBrush(QColor(0,102,204)); break; // Blue walls
+                    case WALL:     p.setBrush(QColor(0,102,204)); break;
                     case PASSAGE:  p.setBrush(Qt::white); break;
-                    case VISITED:  p.setBrush(QColor(102,204,255)); break; // Light blue
+                    case VISITED:  p.setBrush(QColor(102,204,255)); break;
                     case PATH:     p.setBrush(Qt::yellow); break;
                     }
                 }
@@ -165,11 +181,11 @@ public:
 
         QVBoxLayout *mainLayout = new QVBoxLayout(this);
         mainLayout->addWidget(stacked);
-        setLayout(mainLayout);
 
+        setLayout(mainLayout);
         stacked->setCurrentWidget(titlePage);
         setWindowTitle("Maze Game");
-        resize(460, 540);  // Initial smaller window
+        resize(460, 540);
     }
 
 private slots:
@@ -177,6 +193,7 @@ private slots:
     void startEasy(){ startMazeLevel(21); }
     void startMedium(){ startMazeLevel(31); }
     void startHard(){ startMazeLevel(41); }
+
     void solveMaze(){
         maze.findShortestPathBFS();
         mazeWidget->update();
@@ -191,14 +208,18 @@ private:
     QPushButton *btnSolve;
     QPushButton *btnExit;
 
+    // -------------------- Title Screen --------------------
     void setupTitleScreen(){
         titlePage = new QWidget();
         QVBoxLayout *layout = new QVBoxLayout();
+
         QLabel *title = new QLabel("Maze Game");
         title->setAlignment(Qt::AlignCenter);
-        title->setStyleSheet("font-size: 40px; font-weight: bold; color: orange; text-shadow: 2px 2px black;");
+        title->setStyleSheet("font-size: 40px; font-weight: bold; color: orange;");
+
         QPushButton *play = new QPushButton("Play");
         QPushButton *exit = new QPushButton("Exit");
+
         play->setStyleSheet("font-size: 20px; padding: 10px; background-color: green; color: white;");
         exit->setStyleSheet("font-size: 20px; padding: 10px; background-color: red; color: white;");
 
@@ -209,21 +230,26 @@ private:
         layout->addWidget(exit);
         layout->addStretch();
         titlePage->setLayout(layout);
+
         stacked->addWidget(titlePage);
 
         connect(play, &QPushButton::clicked, this, &Window::goToLevelScreen);
         connect(exit, &QPushButton::clicked, this, &QWidget::close);
     }
 
+    // -------------------- Level Screen --------------------
     void setupLevelScreen(){
         levelPage = new QWidget();
         QVBoxLayout *layout = new QVBoxLayout();
+
         QLabel *label = new QLabel("Select Level");
         label->setAlignment(Qt::AlignCenter);
         label->setStyleSheet("font-size: 30px; font-weight: bold; color: darkblue;");
+
         QPushButton *easy = new QPushButton("Easy");
         QPushButton *medium = new QPushButton("Medium");
         QPushButton *hard = new QPushButton("Hard");
+
         easy->setStyleSheet("font-size: 18px; padding: 8px; background-color: lightgreen;");
         medium->setStyleSheet("font-size: 18px; padding: 8px; background-color: yellow;");
         hard->setStyleSheet("font-size: 18px; padding: 8px; background-color: orange;");
@@ -235,6 +261,7 @@ private:
         layout->addWidget(medium);
         layout->addWidget(hard);
         layout->addStretch();
+
         levelPage->setLayout(layout);
         stacked->addWidget(levelPage);
 
@@ -243,13 +270,13 @@ private:
         connect(hard, &QPushButton::clicked, this, &Window::startHard);
     }
 
+    // -------------------- Maze Screen --------------------
     void setupMazeScreen(){
         mazePage = new QWidget();
         QVBoxLayout *layout = new QVBoxLayout();
 
         mazeWidget = new MazeWidget();
         mazeWidget->maze = &maze;
-        mazeWidget->setFixedSize(maze.width * 20, maze.height * 20);
 
         btnSolve = new QPushButton("Solve Maze");
         btnExit = new QPushButton("Exit Game");
@@ -271,24 +298,34 @@ private:
         stacked->addWidget(mazePage);
 
         connect(btnSolve, &QPushButton::clicked, this, &Window::solveMaze);
-        connect(btnExit, &QPushButton::clicked, this, &QWidget::close);
+
+        // ⭐ FIX: Go back to Home instead of closing
+        connect(btnExit, &QPushButton::clicked, this, [this](){
+            stacked->setCurrentWidget(titlePage);
+        });
     }
 
+    // -------------------- AUTO-RESIZE FOR MAZE --------------------
     void startMazeLevel(int size){
-        maze = Maze(size,size);
+        maze = Maze(size, size);
         maze.generatePrim();
-
         mazeWidget->maze = &maze;
-        mazeWidget->setFixedSize(maze.width * 20, maze.height * 20);
+
+        int cell = 20;
+        int mazeW = maze.width * cell;
+        int mazeH = maze.height * cell;
+
+        mazeWidget->setFixedSize(mazeW, mazeH);
         mazeWidget->update();
 
-        // Adjust window size to fit maze + buttons nicely
-        int width = mazeWidget->width() + 40; // margin
-        int height = mazeWidget->height() + 150; // margin + buttons
-        this->resize(width, height);
+        int windowW = mazeW + 80;
+        int windowH = mazeH + 200;
 
-        btnSolve->setFixedWidth(width * 0.8);
-        btnExit->setFixedWidth(width * 0.8);
+        this->setMinimumSize(windowW, windowH);
+        this->resize(windowW, windowH);
+
+        btnSolve->setFixedWidth(windowW * 0.6);
+        btnExit->setFixedWidth(windowW * 0.6);
 
         stacked->setCurrentWidget(mazePage);
         btnExit->setVisible(false);
@@ -296,7 +333,7 @@ private:
     }
 };
 
-// -------------------- main --------------------
+// -------------------- MAIN --------------------
 int main(int argc, char *argv[]){
     QApplication app(argc, argv);
     Window w;
