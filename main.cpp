@@ -12,13 +12,12 @@
 
 using namespace std;
 
-// -------------------- Maze Cell Types --------------------
 #define WALL 0
 #define PASSAGE 1
 #define VISITED 2
 #define PATH 3
 
-// -------------------- Maze Class --------------------
+//Maze Class
 class Maze {
 public:
     int width, height;
@@ -27,7 +26,7 @@ public:
     vector<vector<int>> grid;
 
     Maze(int w = 21, int h = 21) : width(w), height(h) {
-        sx = 0; sy = 0;                // Start top-left
+        sx = 0; sy = 0;// Start top-left
         ex = width - 1; ey = height - 1;  // End bottom-right
         grid.resize(height, vector<int>(width, WALL));
     }
@@ -47,7 +46,7 @@ public:
         // Fill maze with walls
         grid.assign(height, vector<int>(width, WALL));
 
-        // Start carving from (1,1)
+        // Start selecting from (1,1)
         int px = 1, py = 1;
         grid[py][px] = PASSAGE;
 
@@ -71,7 +70,7 @@ public:
             if (isInside(wx, wy+1) && grid[wy+1][wx] == PASSAGE) count++;
             if (isInside(wx, wy-1) && grid[wy-1][wx] == PASSAGE) count++;
 
-            // Carve only if exactly 1 neighbor is passage
+            // select only if exactly 1 neighbor is passage
             if (count == 1) {
                 grid[wy][wx] = PASSAGE;
                 addWalls(wx, wy, walls);
@@ -84,7 +83,7 @@ public:
         grid[ey][ex] = PASSAGE;
         if (isInside(ex-1, ey)) grid[ey][ex-1] = PASSAGE;
     }
-    // -------------------- BFS Shortest Path (Simpler) --------------------
+    // BFS Shortest Path
     bool findShortestPathBFS() {
         // Queue stores x, y, and previous coordinates
         struct Node {
@@ -119,7 +118,7 @@ public:
                     !visited[ny][nx] && grid[ny][nx] == PASSAGE) {
                     visited[ny][nx] = true;
 
-                    // Mark as visited for coloring
+                    // Mark as visited
                     if (!(nx==sx && ny==sy) && !(nx==ex && ny==ey))
                         grid[ny][nx] = VISITED;
 
@@ -151,7 +150,7 @@ public:
 
 };
 
-// -------------------- Maze Widget --------------------
+// Maze Widget
 class MazeWidget : public QWidget {
     Q_OBJECT
 public:
@@ -183,7 +182,7 @@ protected:
     }
 };
 
-// -------------------- Main Window --------------------
+// Main Window
 class Window : public QWidget {
     Q_OBJECT
 public:
@@ -217,7 +216,7 @@ private:
     MazeWidget *mazeWidget;
     QPushButton *btnSolve, *btnExit;
 
-    // -------------------- Title Screen --------------------
+    //Title Screen
     void setupTitleScreen() {
         titlePage = new QWidget();
         QVBoxLayout *layout = new QVBoxLayout();
@@ -246,7 +245,7 @@ private:
         connect(exit, &QPushButton::clicked, this, &QWidget::close);
     }
 
-    // -------------------- Level Screen --------------------
+    //  Level Screen
     void setupLevelScreen() {
         levelPage = new QWidget();
         QVBoxLayout *layout = new QVBoxLayout();
@@ -279,7 +278,7 @@ private:
         connect(hard, &QPushButton::clicked, this, &Window::startHard);
     }
 
-    // -------------------- Maze Screen --------------------
+    // Maze Screen
     void setupMazeScreen() {
         mazePage = new QWidget();
         QVBoxLayout *layout = new QVBoxLayout();
@@ -334,7 +333,7 @@ private:
     }
 };
 
-// -------------------- MAIN --------------------
+//main
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     Window w;
